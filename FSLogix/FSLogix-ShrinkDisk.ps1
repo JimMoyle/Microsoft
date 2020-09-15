@@ -803,7 +803,7 @@
             #Requires -RunAsAdministrator
         } # Begin
         PROCESS {
-    
+            Dismount-DiskImage -ImagePath $Path
             try {
                 # Mount the disk without a drive letter and get it's info, Mount-DiskImage is used to remove reliance on Hyper-V tools
                 $mountedDisk = Mount-DiskImage -ImagePath $Path -NoDriveLetter -PassThru -ErrorAction Stop
