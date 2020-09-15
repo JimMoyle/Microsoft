@@ -1185,7 +1185,7 @@
             }
     
             if ($partSize -eq $false) {
-                Wait-Debugger
+                #Wait-Debugger
                 #$partInfo | Export-Clixml -Path "$env:TEMP\ForJim-$($Disk.Name).xml"
                 Write-VhdOutput -DiskState 'No Partition Supported Size Info - The Windows Disk SubSystem did not respond in a timely fashion try increasing number of cores or decreasing threads by using the ThrottleLimit parameter' -EndTime (Get-Date)
                 $mount | DisMount-FslDisk
@@ -1866,7 +1866,7 @@
             }
     
             if ($partSize -eq $false) {
-                Wait-Debugger
+                #Wait-Debugger
                 #$partInfo | Export-Clixml -Path "$env:TEMP\ForJim-$($Disk.Name).xml"
                 Write-VhdOutput -DiskState 'No Partition Supported Size Info - The Windows Disk SubSystem did not respond in a timely fashion try increasing number of cores or decreasing threads by using the ThrottleLimit parameter' -EndTime (Get-Date)
                 $mount | DisMount-FslDisk
