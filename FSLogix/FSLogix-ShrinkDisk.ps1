@@ -53,6 +53,10 @@
         Specifies the number of disks that will be processed at a time. Further disks in the queue will wait till a previous disk has finished up to a maximum of the ThrottleLimit.  The  default value is 8.
         .PARAMETER RatioFreeSpace
         The minimum percentage of white space in the disk before processing will start as a decimal between 0 and 1 eg 0.2 is 20% 0.65 is 65%. The Default is 0.05.  This means that if the available size reduction is less than 5%, then no action will be taken.  To try and shrink all files no matter how little the gain set this to 0.
+        .PARAMETER RollingLog
+        Activate Rolling Logs with timestamp
+        .PARAMETER CleanUp
+        Delete existing Office Container Difference Disks, merge and RW files
         .INPUTS
         You can pipe the path into the command which is recognised by type, you can also pipe any parameter by name. It will also take the path positionally
         .OUTPUTS
@@ -121,12 +125,22 @@
         [Parameter(
             ValuefromPipelineByPropertyName = $true
         )]
+        [Switch]$RollingLog,
+
+        [Parameter(
+            ValuefromPipelineByPropertyName = $true
+        )]
         [System.String]$LogFilePath = "$env:TEMP\FslShrinkDisk $(Get-Date -Format yyyy-MM-dd` HH-mm-ss).csv",
     
         [Parameter(
             ValuefromPipelineByPropertyName = $true
         )]
         [switch]$PassThru,
+
+        [Parameter(
+            ValuefromPipelineByPropertyName = $true
+        )]
+        [switch]$CleanUp,
     
         [Parameter(
             ValuefromPipelineByPropertyName = $true
@@ -1043,6 +1057,11 @@
             [string]$LogFilePath = "$env:TEMP\FslShrinkDisk $(Get-Date -Format yyyy-MM-dd` HH-mm-ss).csv",
     
             [Parameter(
+            ValuefromPipelineByPropertyName = $true
+            )]
+            [Switch]$RollingLog,
+
+            [Parameter(
                 ValuefromPipelineByPropertyName = $true
             )]
             [switch]$Passthru
@@ -1062,7 +1081,13 @@
     
             #Grab size of disk being porcessed
             $originalSize = $Disk.Length
-    
+            
+            #Rolling Log File
+            if ($RollingLog) {
+            $LogFilePath = $LogFilePath.TrimEnd(".csv")
+            $LogFilePath = "$LogFilePath $(Get-Date -Format yyyy-MM-dd` HH-mm-ss).csv"
+            }
+
             #Set default parameter values for the Write-VhdOutput command to prevent repeating code below, these can be overridden as I need to.
             $PSDefaultParameterValues = @{
                 "Write-VhdOutput:Path"         = $LogFilePath
@@ -1332,7 +1357,7 @@
                 Mandatory = $true
             )]
             [datetime]$EndTime,
-    
+
             [Parameter(
                 Mandatory = $true
             )]
@@ -1407,12 +1432,22 @@
         #Get a list of Virtual Hard Disk files depending on the recurse parameter
         if ($Recurse) {
             $diskList = Get-ChildItem -File -Filter *.vhd? -Path $Path -Recurse
+            if ($CleanUp){
+            Get-ChildItem -File -Filter merge.vhd? -Path $Path -Recurse | Remove-Item
+            Get-ChildItem -File -Filter RW.vhd? -Path $Path -Recurse | Remove-Item
+            Get-ChildItem -File -Filter *_ODFC.vhd? -Path $Path -Recurse | Remove-Item
+            }
         }
         else {
             $diskList = Get-ChildItem -File -Filter *.vhd? -Path $Path
+            if ($CleanUp){
+            Get-ChildItem -File -Filter merge.vhd? -Path $Path | Remove-Item
+            Get-ChildItem -File -Filter RW.vhd? -Path $Path | Remove-Item
+            Get-ChildItem -File -Filter *_ODFC.vhd? -Path $Path | Remove-Item
+            }
         }
-    
-        $diskList = $diskList | Where-Object {$_.Name -ne "Merge.vhdx"}
+
+        $diskList = $diskList | Where-Object { $_.Name -ne "Merge.vhdx" -and $_.Name -ne "RW.vhdx" -and $_.Name -notlike "*_ODFC.vhdx"}
     
         #If we can't find and files with the extension vhd or vhdx quit
         if ( ($diskList | Measure-Object).count -eq 0 ) {
@@ -1723,6 +1758,11 @@
             [Parameter(
                 ValuefromPipelineByPropertyName = $true
             )]
+            [Switch]$RollingLog,
+
+            [Parameter(
+                ValuefromPipelineByPropertyName = $true
+            )]
             [switch]$Passthru
     
         )
@@ -2009,7 +2049,12 @@
                 Mandatory = $true
             )]
             [datetime]$EndTime,
-    
+
+            [Parameter(
+                Mandatory = $true
+            )]
+            [Switch]$RollingLog,
+
             [Parameter(
                 Mandatory = $true
             )]
@@ -2021,6 +2066,7 @@
         } # Begin
         PROCESS {
     
+
             #unit conversion and calculation should happen in output function
             $output = [PSCustomObject]@{
                 Name             = $Name
@@ -2054,7 +2100,7 @@
         } #Process
         END { } #End
     }  #function Write-VhdOutput.ps1
-    
+            
             $paramOptimizeOneDisk = @{
                 Disk                = $_
                 DeleteOlderThanDays = $using:DeleteOlderThanDays
@@ -2066,7 +2112,11 @@
             Optimize-OneDisk @paramOptimizeOneDisk
     
         } #Scriptblock
-    
+                #Rolling Log File
+                if ($RollingLog) {
+                    $LogFilePath = $LogFilePath.TrimEnd(".csv")
+                    $LogFilePath = "$LogFilePath $(Get-Date -Format yyyy-MM-dd` HH-mm-ss).csv"
+                    }
         $scriptblockInvokeParallel = {
     
             $disk = $_
