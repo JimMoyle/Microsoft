@@ -1176,7 +1176,7 @@
             }
     
             if ($partSize -eq $false) {
-                Export-Clixml -Path "$env:TEMP\ForJim-$($Disk.Name).xml"
+                #Export-Clixml -Path "$env:TEMP\ForJim-$($Disk.Name).xml"
                 Write-VhdOutput -DiskState 'No Partition Supported Size Info - The Windows Disk SubSystem did not respond in a timely fashion try increasing number of cores or decreasing threads by using the ThrottleLimit parameter' -EndTime (Get-Date)
                 $mount | DisMount-FslDisk
                 return
@@ -1434,17 +1434,17 @@
         if ($Recurse) {
             $diskList = Get-ChildItem -File -Filter *.vhd? -Path $Path -Recurse
             if ($CleanUp){
-            Get-ChildItem -File -Filter merge.vhd? -Path $Path -Recurse | Remove-Item
-            Get-ChildItem -File -Filter RW.vhd? -Path $Path -Recurse | Remove-Item
-            Get-ChildItem -File -Filter *_ODFC.vhd? -Path $Path -Recurse | Remove-Item
+            Get-ChildItem -File -Filter merge.vhd? -Path $Path -Recurse | Remove-Item -ErrorAction SilentlyContinue
+            Get-ChildItem -File -Filter RW.vhd? -Path $Path -Recurse | Remove-Item -ErrorAction SilentlyContinue
+            Get-ChildItem -File -Filter *_ODFC.vhd? -Path $Path -Recurse | Remove-Item -ErrorAction SilentlyContinue
             }
         }
         else {
             $diskList = Get-ChildItem -File -Filter *.vhd? -Path $Path
             if ($CleanUp){
-            Get-ChildItem -File -Filter merge.vhd? -Path $Path | Remove-Item
-            Get-ChildItem -File -Filter RW.vhd? -Path $Path | Remove-Item
-            Get-ChildItem -File -Filter *_ODFC.vhd? -Path $Path | Remove-Item
+            Get-ChildItem -File -Filter merge.vhd? -Path $Path | Remove-Item -ErrorAction SilentlyContinue
+            Get-ChildItem -File -Filter RW.vhd? -Path $Path | Remove-Item -ErrorAction SilentlyContinue
+            Get-ChildItem -File -Filter *_ODFC.vhd? -Path $Path | Remove-Item -ErrorAction SilentlyContinue
             }
         }
 
@@ -1869,7 +1869,7 @@
             }
     
             if ($partSize -eq $false) {
-                Export-Clixml -Path "$env:TEMP\ForJim-$($Disk.Name).xml"
+                #Export-Clixml -Path "$env:TEMP\ForJim-$($Disk.Name).xml"
                 Write-VhdOutput -DiskState 'No Partition Supported Size Info - The Windows Disk SubSystem did not respond in a timely fashion try increasing number of cores or decreasing threads by using the ThrottleLimit parameter' -EndTime (Get-Date)
                 $mount | DisMount-FslDisk
                 return
