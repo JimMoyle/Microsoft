@@ -1084,7 +1084,8 @@
             
             #Rolling Log File
             if ($RollingLog) {
-            $LogFilePath = $LogFilePath.TrimEnd(".csv")
+            $LogFilePath = $LogFilePath.Substring(0, $LogFilePath.IndexOf('.'))
+            #$LogFilePath = $LogFilePath.TrimEnd(".csv")
             $LogFilePath = "$LogFilePath $(Get-Date -Format yyyy-MM-dd` HH-mm-ss).csv"
             }
 
@@ -2114,7 +2115,8 @@
         } #Scriptblock
                 #Rolling Log File
                 if ($RollingLog) {
-                    $LogFilePath = $LogFilePath.TrimEnd(".csv")
+                    $LogFilePath = $LogFilePath.Substring(0, $LogFilePath.IndexOf('.'))
+                    #$LogFilePath = $LogFilePath.TrimEnd(".csv")
                     $LogFilePath = "$LogFilePath $(Get-Date -Format yyyy-MM-dd` HH-mm-ss).csv"
                     }
         $scriptblockInvokeParallel = {
