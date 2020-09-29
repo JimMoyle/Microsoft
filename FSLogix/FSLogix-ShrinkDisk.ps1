@@ -789,7 +789,7 @@
             #Requires -RunAsAdministrator
         } # Begin
         PROCESS {
-            Dismount-DiskImage -ImagePath $Path
+            
             try {
                 # Mount the disk without a drive letter and get it's info, Mount-DiskImage is used to remove reliance on Hyper-V tools
                 $mountedDisk = Mount-DiskImage -ImagePath $Path -NoDriveLetter -PassThru -ErrorAction Stop
@@ -909,6 +909,7 @@
                     Path       = $mountPath
                     DiskNumber = $mountedDisk.Number
                     ImagePath  = $mountedDisk.ImagePath
+                    PartitionNumber = $partition.PartitionNumber
                 }
                 Write-Output $output
             }
@@ -1074,6 +1075,10 @@
             $hyperv = $false
         } # Begin
         PROCESS {
+            #In case there are disks left mounted let's try to clean up.
+            Dismount-DiskImage -ImagePath $Path -ErrorAction SilentlyContinue
+
+            #Get start time for logfile
             $startTime = Get-Date
             if ( $IgnoreLessThanGB ) {
                 $IgnoreLessThanBytes = $IgnoreLessThanGB * 1024 * 1024 * 1024
@@ -1103,7 +1108,7 @@
     
             #Check it is a disk
             if ($Disk.Extension -ne '.vhd' -and $Disk.Extension -ne '.vhdx' ) {
-                Write-VhdOutput -DiskState 'FileIsNotDiskFormat' -EndTime (Get-Date)
+                Write-VhdOutput -DiskState 'File Is Not a Virtual Hard Disk format with extension vhd or vhdx' -EndTime (Get-Date)
                 return
             }
     
@@ -1117,7 +1122,7 @@
                         Write-VhdOutput -DiskState "Deleted" -FinalSize 0 -EndTime (Get-Date)
                     }
                     catch {
-                        Write-VhdOutput -DiskState 'DiskDeletionFailed' -EndTime (Get-Date)
+                        Write-VhdOutput -DiskState 'Disk Deletion Failed' -EndTime (Get-Date)
                     }
                     return
                 }
@@ -1140,6 +1145,8 @@
                 return
             }
     
+            #Grabbing partition info can fail when the client is under heavy load so.......
+
             $timespan = (Get-Date).AddSeconds(120)
             $partInfo = $null
             while (($partInfo | Measure-Object).Count -lt 1 -and $timespan -gt (Get-Date)) {
@@ -1158,7 +1165,28 @@
                 return
             }
     
-            Get-Volume -Partition $partInfo | Optimize-Volume
+            $timespan = (Get-Date).AddSeconds(120)
+            $defrag = $false
+            while ($defrag -eq $false -and $timespan -gt (Get-Date)) {
+                try {
+                    Get-Volume -Partition $partInfo -ErrorAction Stop | Optimize-Volume -ErrorAction Stop
+                    $defrag = $true
+                }
+                catch {
+                    try {
+                        Get-Volume -ErrorAction Stop | Where-Object {
+                            $_.UniqueId -like "*$($partInfo.Guid)*"
+                            -or $_.Path -Like "*$($partInfo.Guid)*"
+                            -or $_.ObjectId -Like "*$($partInfo.Guid)*" } | Optimize-Volume -ErrorAction Stop
+                        $defrag = $true
+                    }
+                    catch {
+                        $defrag = $false
+                        Start-Sleep 0.1
+                    }
+                    $defrag = $false
+                }
+            }
     
             #Grab partition information so we know what size to shrink the partition to and what to re-enlarge it to.  This helps optimise-vhd work at it's best
             $partSize = $false
@@ -1170,13 +1198,22 @@
                     $partSize = $true
                 }
                 catch {
+                    try {
+                        $partitionsize = Get-PartitionSupportedSize -DiskNumber $mount.DiskNumber -PartitionNumber $mount.PartitionNumber -ErrorAction Stop
+                        $sizeMax = $partitionsize.SizeMax
+                        $partSize = $true
+                    }
+                    catch {
+                        $partSize = $false
+                        Start-Sleep 0.1
+                    }
                     $partSize = $false
-                    Start-Sleep 0.1
+
                 }
             }
     
             if ($partSize -eq $false) {
-                #Export-Clixml -Path "$env:TEMP\ForJim-$($Disk.Name).xml"
+                #$partInfo | Export-Clixml -Path "$env:TEMP\ForJim-$($Disk.Name).xml"
                 Write-VhdOutput -DiskState 'No Partition Supported Size Info - The Windows Disk SubSystem did not respond in a timely fashion try increasing number of cores or decreasing threads by using the ThrottleLimit parameter' -EndTime (Get-Date)
                 $mount | DisMount-FslDisk
                 return
@@ -1208,7 +1245,6 @@
                 $sizeBytesIncrement = 100 * 1024 * 1024
     
                 while ($i -le 5 -and $resize -eq $false) {
-    
                     try {
                         Resize-Partition -InputObject $partInfo -Size $targetSize -ErrorAction Stop
                         $resize = $true
@@ -1417,7 +1453,7 @@
     
         If (($ThrottleLimit / 2) -gt $numberOfCores) {
     
-            #$ThrottleLimit = $numberOfCores * 2
+            $ThrottleLimit = $numberOfCores * 2
             Write-Warning "Number of threads set to double the number of cores - $ThrottleLimit"
         }
     
@@ -1611,6 +1647,7 @@
                     Path       = $mountPath
                     DiskNumber = $mountedDisk.Number
                     ImagePath  = $mountedDisk.ImagePath
+                    PartitionNumber = $partition.PartitionNumber
                 }
                 Write-Output $output
             }
@@ -1774,15 +1811,19 @@
             $hyperv = $false
         } # Begin
         PROCESS {
+            #In case there are disks left mounted let's try to clean up.
+            Dismount-DiskImage -ImagePath $Path -ErrorAction SilentlyContinue
+
+            #Get start time for logfile
             $startTime = Get-Date
             if ( $IgnoreLessThanGB ) {
                 $IgnoreLessThanBytes = $IgnoreLessThanGB * 1024 * 1024 * 1024
             }
     
-            #Grab size of disk being porcessed
+            #Grab size of disk being processed
             $originalSize = $Disk.Length
     
-            #Set default parameter values for the Write-VhdOutput command to prevent repeating code below, these can be overridden as I need to.
+            #Set default parameter values for the Write-VhdOutput command to prevent repeating code below, these can be overridden as I need to. Calculations to be done in the output function, raw data goes in.
             $PSDefaultParameterValues = @{
                 "Write-VhdOutput:Path"         = $LogFilePath
                 "Write-VhdOutput:StartTime"    = $startTime
@@ -1796,7 +1837,7 @@
     
             #Check it is a disk
             if ($Disk.Extension -ne '.vhd' -and $Disk.Extension -ne '.vhdx' ) {
-                Write-VhdOutput -DiskState 'FileIsNotDiskFormat' -EndTime (Get-Date)
+                Write-VhdOutput -DiskState 'File Is Not a Virtual Hard Disk format with extension vhd or vhdx' -EndTime (Get-Date)
                 return
             }
     
@@ -1810,7 +1851,7 @@
                         Write-VhdOutput -DiskState "Deleted" -FinalSize 0 -EndTime (Get-Date)
                     }
                     catch {
-                        Write-VhdOutput -DiskState 'DiskDeletionFailed' -EndTime (Get-Date)
+                        Write-VhdOutput -DiskState 'Disk Deletion Failed' -EndTime (Get-Date)
                     }
                     return
                 }
@@ -1823,7 +1864,6 @@
             }
     
             #Initial disk Mount
-    
             try {
                 $mount = Mount-FslDisk -Path $Disk.FullName -TimeOut 30 -PassThru -ErrorAction Stop
             }
@@ -1833,6 +1873,8 @@
                 return
             }
     
+            #Grabbing partition info can fail when the client is under heavy load so.......
+
             $timespan = (Get-Date).AddSeconds(120)
             $partInfo = $null
             while (($partInfo | Measure-Object).Count -lt 1 -and $timespan -gt (Get-Date)) {
@@ -1851,8 +1893,29 @@
                 return
             }
     
-            Get-Volume -Partition $partInfo | Optimize-Volume
-    
+            $timespan = (Get-Date).AddSeconds(120)
+            $defrag = $false
+            while ($defrag -eq $false -and $timespan -gt (Get-Date)) {
+                try {
+                    Get-Volume -Partition $partInfo -ErrorAction Stop | Optimize-Volume -ErrorAction Stop
+                    $defrag = $true
+                }
+                catch {
+                    try {
+                        Get-Volume -ErrorAction Stop | Where-Object {
+                            $_.UniqueId -like "*$($partInfo.Guid)*"
+                            -or $_.Path -Like "*$($partInfo.Guid)*"
+                            -or $_.ObjectId -Like "*$($partInfo.Guid)*" } | Optimize-Volume -ErrorAction Stop
+                        $defrag = $true
+                    }
+                    catch {
+                        $defrag = $false
+                        Start-Sleep 0.1
+                    }
+                    $defrag = $false
+                }
+            }
+
             #Grab partition information so we know what size to shrink the partition to and what to re-enlarge it to.  This helps optimise-vhd work at it's best
             $partSize = $false
             $timespan = (Get-Date).AddSeconds(30)
@@ -1863,13 +1926,23 @@
                     $partSize = $true
                 }
                 catch {
+                    try {
+                        $partitionsize = Get-PartitionSupportedSize -DiskNumber $mount.DiskNumber -PartitionNumber $mount.PartitionNumber -ErrorAction Stop
+                        $sizeMax = $partitionsize.SizeMax
+                        $partSize = $true
+                    }
+                    catch {
                     $partSize = $false
                     Start-Sleep 0.1
                 }
+                $partSize = $false
+
             }
-    
-            if ($partSize -eq $false) {
-                #Export-Clixml -Path "$env:TEMP\ForJim-$($Disk.Name).xml"
+        }
+
+        if ($partSize -eq $false) {
+            #$partInfo | Export-Clixml -Path "$env:TEMP\ForJim-$($Disk.Name).xml"
+            Write-VhdOut
                 Write-VhdOutput -DiskState 'No Partition Supported Size Info - The Windows Disk SubSystem did not respond in a timely fashion try increasing number of cores or decreasing threads by using the ThrottleLimit parameter' -EndTime (Get-Date)
                 $mount | DisMount-FslDisk
                 return
